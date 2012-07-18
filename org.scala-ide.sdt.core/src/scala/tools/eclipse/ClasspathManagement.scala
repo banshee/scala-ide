@@ -70,7 +70,17 @@ case class ScalaClasspath(val jdkPaths: Seq[IPath], // JDK classpath
  *  @param isProject Whether the library is provided by a project inside the workspace
  * 
  */
-case class ScalaLibrary(location: IPath, version: Option[String], isProject: Boolean)
+case class ScalaLibrary(location: IPath, version: LibraryVersion, isProject: Boolean)
+
+/** Version numbers for Scala libraries
+ * 
+ *  @param version the version.number string from library.properties
+ *  @param parentVersion the version number of the library this library was derived from
+ */
+case class LibraryVersion(version: Option[String], parentVersion: Option[String])
+object LibraryVersion {
+  def empty = LibraryVersion(None, None)
+}
 
 /** Scala project classpath management. This class is responsible for breaking down the classpath in
  *  JDK entries, Scala library entries, and user entries. It also validates the classpath and
@@ -84,8 +94,8 @@ trait ClasspathManagement extends HasLogger { self: ScalaProject =>
     val cp = classpath.filterNot(jdkEntries.toSet)
 
     scalaLibraries match {
-      case Seq(ScalaLibrary(pf, version, _), _*) => 
-        new ScalaClasspath(jdkEntries, Some(pf), cp.filterNot(_ == pf), version)
+      case Seq(ScalaLibrary(pf, libraryVersion, _), _*) => 
+        new ScalaClasspath(jdkEntries, Some(pf), cp.filterNot(_ == pf), libraryVersion.version)
       case _ => 
         new ScalaClasspath(jdkEntries, None, cp, None)
     }
@@ -265,10 +275,15 @@ trait ClasspathManagement extends HasLogger { self: ScalaProject =>
 
   private def checkClasspath() {
     def incompatibleScalaLibrary(scalaLib: ScalaLibrary) = scalaLib match { 
-      case ScalaLibrary(_, version, false) => !plugin.isCompatibleVersion(version) 
+      case ScalaLibrary(_, LibraryVersion(version, _), false) => !plugin.isCompatibleVersion(version) 
       case _ => false 
     }
 
+    def parentVersionIsIdenticalToPlugin(library: ScalaLibrary) = library match {
+      case ScalaLibrary(_, LibraryVersion(_, Some(parentVersion)), _) => parentVersion == plugin.scalaVer
+      case _ => false
+    } 
+    
     // look for all package fragment roots containing instances of scala.Predef
     val fragmentRoots = scalaLibraries
 
@@ -280,7 +295,7 @@ trait ClasspathManagement extends HasLogger { self: ScalaProject =>
         if (fragmentRoots(0).isProject) {
           // if the library is provided by a project in the workspace, disable the warning (the version file is missing anyway)
           setClasspathError(0, null)
-        } else fragmentRoots(0).version match {
+        } else fragmentRoots(0).version.version match {
           case Some(v) if v == plugin.scalaVer =>
             // exactly the same version, should be from the container. Perfect
             setClasspathError(0, null)
@@ -294,11 +309,12 @@ trait ClasspathManagement extends HasLogger { self: ScalaProject =>
             // no version found
             setClasspathError(IMarker.SEVERITY_ERROR, "The scala library found in the build path doesn't expose its version. Please replace the scala library with the scala container or a valid scala library jar")
         }
+      case _ if (fragmentRoots.exists(incompatibleScalaLibrary)) =>
+        setClasspathError(IMarker.SEVERITY_ERROR, moreThanOneLibraryError(fragmentRoots.map(_.location), compatible = false))
+      case _ if (fragmentRoots.count(parentVersionIsIdenticalToPlugin) >= (fragmentRoots.length - 1)) =>
+        setClasspathError(0, null)
       case _ => // 2 or more of them, not great, but warn only if the library is not a project
-        if (fragmentRoots.exists(incompatibleScalaLibrary))
-          setClasspathError(IMarker.SEVERITY_ERROR, moreThanOneLibraryError(fragmentRoots.map(_.location), compatible = false))
-        else
-          setClasspathError(IMarker.SEVERITY_WARNING, moreThanOneLibraryError(fragmentRoots.map(_.location), compatible = true))
+        setClasspathError(IMarker.SEVERITY_WARNING, moreThanOneLibraryError(fragmentRoots.map(_.location), compatible = true))
     }
   }
   
@@ -310,25 +326,28 @@ trait ClasspathManagement extends HasLogger { self: ScalaProject =>
 
   /** Return the version number contained in library.properties if it exists.
    */
-  private def getVersionNumber(fragmentRoot: IPackageFragmentRoot): Option[String] = {
-    def getVersion(resource: IStorage): Option[String] = try {
+  private def getVersionNumber(fragmentRoot: IPackageFragmentRoot): LibraryVersion = {
+    def getProperty(resource: IStorage, name: String): Option[String] = try {
       val properties = new Properties()
       properties.load(resource.getContents())
-      Option(properties.getProperty("version.number"))
+      Option(properties.getProperty(name))
     } catch {
       case _: IOException => None // be very lenient, not all libraries have a properties file
     }
 
+    def getVersion(resource: IStorage): Option[String] = getProperty(resource, "version.number")
+    def getParentVersion(resource: IStorage): Option[String] = getProperty(resource, "parent.version")
+
     for (resource <- fragmentRoot.getNonJavaResources())
       resource match {
         case jarEntry: IJarEntryResource if jarEntry.isFile() && "library.properties".equals(jarEntry.getName) =>
-          return getVersion(jarEntry)
+          return LibraryVersion(version = getVersion(jarEntry), parentVersion = getParentVersion(jarEntry))
         case entry: IFile if "library.properties".equals(entry.getName) =>
-          return getVersion(entry)
+          return LibraryVersion(version = getVersion(entry), parentVersion = getParentVersion(entry))
         case _ =>
       }
     // couldn't find it
-    None
+    LibraryVersion.empty
   }
 
   /** Manage the possible classpath error/warning reported on the project.
