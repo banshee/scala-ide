@@ -12,32 +12,59 @@ import scala.tools.eclipse.javaelements.ScalaCompilationUnit
 import scala.tools.eclipse.javaelements.ScalaSelectionEngine
 import scala.tools.eclipse.javaelements.ScalaSelectionRequestor
 import scala.tools.eclipse.logging.HasLogger
+import scala.tools.eclipse.InteractiveCompilationUnit
+import org.eclipse.jdt.internal.core.JavaProject
+import org.eclipse.jdt.internal.core.DefaultWorkingCopyOwner
+import org.eclipse.jdt.internal.core.Openable
+import scala.tools.eclipse.InteractiveCompilationUnit
 
 class DeclarationHyperlinkDetector extends BaseHyperlinkDetector with HasLogger {
 
-  private val resolver: ScalaDeclarationHyperlinkComputer = new ScalaDeclarationHyperlinkComputer
+  protected val resolver: ScalaDeclarationHyperlinkComputer = new ScalaDeclarationHyperlinkComputer
 
-  override protected[detector] def runDetectionStrategy(scu: ScalaCompilationUnit, textEditor: ITextEditor, currentSelection: IRegion): List[IHyperlink] = {
-    val wordRegion = ScalaWordFinder.findWord(scu.getContents, currentSelection.getOffset)
+  override protected def runDetectionStrategy(icu: InteractiveCompilationUnit, textEditor: ITextEditor, currentSelection: IRegion): List[IHyperlink] = {
+    val input = textEditor.getEditorInput
+    val doc = textEditor.getDocumentProvider.getDocument(input)
+    val wordRegion = ScalaWordFinder.findWord(doc.get, currentSelection.getOffset)
 
-    resolver.findHyperlinks(scu, wordRegion) match {
-      case None => List()
-      case Some(List()) => javaDeclarationHyperlinkComputer(textEditor, wordRegion, scu)
-      case Some(hyperlinks) => hyperlinks
-    }
+    findHyperlinks(textEditor, icu, wordRegion)
   }
-
-  private def javaDeclarationHyperlinkComputer(textEditor: ITextEditor, wordRegion: IRegion, scu: ScalaCompilationUnit): List[IHyperlink] = {
+  
+  protected def findHyperlinks(textEditor: ITextEditor, icu: InteractiveCompilationUnit, wordRegion: IRegion): List[IHyperlink] = {
+    findHyperlinks(textEditor, icu, wordRegion, wordRegion)
+  }
+  
+  protected def findHyperlinks(textEditor: ITextEditor, icu: InteractiveCompilationUnit, wordRegion: IRegion, mappedRegion: IRegion): List[IHyperlink] = {
+    resolver.findHyperlinks(icu, wordRegion, mappedRegion) match {
+      case None => List()
+      case Some(List()) =>
+        icu match {
+          case icuOpenable: InteractiveCompilationUnit with Openable =>
+            // the following assumes too heavily a Java compilation unit, being based on the dreaded
+            // ScalaSelectionEngine. However, this is a last-resort hyperlinking that uses search for
+            // top-level types, and unless there are bugs, normal hyperlinking (through compiler symbols)
+            // would find it. So we go here only for `ScalaCompilationUnit`s.
+            javaDeclarationHyperlinkComputer(textEditor, wordRegion, icuOpenable, icuOpenable, mappedRegion)
+          case _ =>
+            javaDeclarationHyperlinkComputer(textEditor, wordRegion, icu, null, mappedRegion)
+        }
+      case Some(hyperlinks) =>
+        hyperlinks
+    }
+  } 
+  
+  private def javaDeclarationHyperlinkComputer(textEditor: ITextEditor, wordRegion: IRegion, icu: InteractiveCompilationUnit, openable: Openable, mappedRegion: IRegion): List[IHyperlink] = {
     try {
-      val environment = scu.newSearchableEnvironment()
-      val requestor = new ScalaSelectionRequestor(environment.nameLookup, scu)
-      val engine = new ScalaSelectionEngine(environment, requestor, scu.getJavaProject.getOptions(true))
-      val offset = wordRegion.getOffset
-      engine.select(scu, offset, offset + wordRegion.getLength - 1)
+      val environment = icu.newSearchableEnvironment()
+      val requestor = new ScalaSelectionRequestor(environment.nameLookup, openable)
+      val engine = new ScalaSelectionEngine(environment, requestor, icu.scalaProject.javaProject.getOptions(true))
+      val offset = mappedRegion.getOffset
+      engine.select(icu, offset, offset + mappedRegion.getLength - 1)
       val elements = requestor.getElements.toList
 
       lazy val qualify = elements.length > 1
-      lazy val openAction = new OpenAction(textEditor.asInstanceOf[JavaEditor])
+      lazy val openAction = new OpenAction(textEditor.getEditorSite()) // changed from asInstanceOf[JavaEditor] to getEditorSite because 
+      // some editors can be non java editor
       elements.map(new JavaElementHyperlink(wordRegion, openAction, _, qualify))
     } catch {
       case t: Throwable => 
@@ -45,6 +72,7 @@ class DeclarationHyperlinkDetector extends BaseHyperlinkDetector with HasLogger 
         Nil
     }
   }
+
 }
 
 object DeclarationHyperlinkDetector {

@@ -119,7 +119,7 @@ class OrganizeImportsAction extends RefactoringAction with ActionWithNoWizard {
         
         pm.subTask("Waiting for the compiler to finish..")    
         
-        EditorHelpers.withScalaFileAndSelection { (scalaSourceFile, textSelection) =>
+        EditorHelpers.withScalaSourceFileAndSelection { (scalaSourceFile, textSelection) =>
           pm.subTask("Applying the changes.")
           val changes = createChanges(scalaSourceFile, imports, pm)
           val document = editor.getDocumentProvider.getDocument(editor.getEditorInput)
@@ -233,7 +233,7 @@ class OrganizeImportsAction extends RefactoringAction with ActionWithNoWizard {
         
         val expandOrCollapse = organizationStrategy match {
           case ExpandImports => List(refactoring.ExpandImports)
-          case CollapseImports => List(refactoring.CollapseImports)
+          case CollapseImports => List(refactoring.CollapseImports, refactoring.SortImportSelectors)
           case PreserveExistingGroups => Nil // this is not passed as an option
         }
         

@@ -7,25 +7,17 @@ package scala.tools.eclipse.javaelements
 
 import java.util.{ HashMap => JHashMap }
 
-import org.eclipse.core.resources.IResource
-import org.eclipse.core.runtime.IStatus
-import org.eclipse.jdt.core.{
-  ICompilationUnit, IJavaElement, IPackageDeclaration, IProblemRequestor, IJavaModelStatusConstants, IType, JavaModelException,
-  WorkingCopyOwner }
-import org.eclipse.jdt.core.compiler.{ CharOperation, IProblem }
-import org.eclipse.jdt.internal.compiler.env
-import org.eclipse.jdt.internal.compiler.env.IBinaryType
-import org.eclipse.jdt.internal.core.{
-  BasicCompilationUnit, BinaryType, ClassFile, DefaultWorkingCopyOwner, JavaModelStatus, JavaProject, JavaElement, PackageFragment }
-import org.eclipse.jdt.internal.core.util.Util
-
-import org.eclipse.core.runtime.IProgressMonitor
-import org.eclipse.jdt.core.dom.CompilationUnit
-
-import scala.tools.nsc.io.{ AbstractFile, VirtualFile }
-
 import scala.tools.eclipse.ScalaImages
 import scala.tools.eclipse.contribution.weaving.jdt.IScalaClassFile
+import scala.tools.nsc.io.{AbstractFile, VirtualFile}
+
+import org.eclipse.core.resources.IResource
+import org.eclipse.core.runtime.IProgressMonitor
+import org.eclipse.core.runtime.IStatus
+import org.eclipse.jdt.core.{IJavaElement, IType, WorkingCopyOwner}
+import org.eclipse.jdt.core.compiler.{ CharOperation, IProblem }
+import org.eclipse.jdt.internal.core.{BinaryType, ClassFile, JavaModelStatus, PackageFragment}
+import org.eclipse.jdt.internal.core.util.Util
 
 class ScalaClassFile(parent : PackageFragment, name : String, sourceFile : String)
   extends ClassFile(parent, name) with ScalaCompilationUnit with IScalaClassFile {
@@ -35,6 +27,8 @@ class ScalaClassFile(parent : PackageFragment, name : String, sourceFile : Strin
     val e = getSourceElementAt(position)
     if (e == this) null else e
   }
+
+  def reconcile(contents: String): List[IProblem] = Nil
 
   def getCorrespondingElement(element : IJavaElement) : Option[IJavaElement] = {
     if (!validateExistence(resource).isOK)
@@ -100,7 +94,7 @@ class ScalaClassFile(parent : PackageFragment, name : String, sourceFile : Strin
 	if ((underlyingResource ne null) && !underlyingResource.isAccessible) newDoesNotExistStatus() else JavaModelStatus.VERIFIED_OK
   }
 
-  def getProblems : Array[IProblem] = null
+  def currentProblems: List[IProblem] = Nil
     
   def closeBuffer0() = super.closeBuffer()
   def closing0(info : AnyRef) = super.closing(info)

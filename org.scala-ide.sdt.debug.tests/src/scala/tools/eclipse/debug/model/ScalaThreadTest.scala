@@ -39,7 +39,7 @@ class ScalaThreadTest {
     val jdiThreadGroup = createThreadGroup();
     when(jdiThread.threadGroup).thenReturn(jdiThreadGroup)
 
-    val thread = new ScalaThread(null, jdiThread)
+    val thread = ScalaThread(null, jdiThread)
 
     assertEquals("Bad thread name", "some test string", thread.getName)
   }
@@ -52,7 +52,7 @@ class ScalaThreadTest {
     val jdiThreadGroup = createThreadGroup();
     when(jdiThread.threadGroup).thenReturn(jdiThreadGroup)
 
-    val thread = new ScalaThread(null, jdiThread)
+    val thread = ScalaThread(null, jdiThread)
 
     assertEquals("Bad thread name on VMDisconnectedException", "<disconnected>", thread.getName)
   }
@@ -65,9 +65,27 @@ class ScalaThreadTest {
     val jdiThreadGroup = createThreadGroup();
     when(jdiThread.threadGroup).thenReturn(jdiThreadGroup)
 
-    val thread = new ScalaThread(null, jdiThread)
+    val thread = ScalaThread(null, jdiThread)
 
     assertEquals("Bad thread name", "<garbage collected>", thread.getName)
+  }
+
+  /**
+   * Check that the underlying thread is resume only once when the resume() method is called.
+   * See #1001199
+   */
+  @Test
+  def threadResumedOnlyOnce_1001199() {
+    val jdiThread = mock(classOf[ThreadReference])
+
+    val thread = ScalaThread(null, jdiThread)
+
+    thread.resume()
+
+    // using getStackFrame, which is synchronous, to wait for the ResumeFromScala to be processed
+    thread.getStackFrames
+
+    verify(jdiThread, times(1)).resume()
   }
 
 }

@@ -35,7 +35,7 @@ class GlobalRenameAction extends RefactoringAction {
   class RenameScalaIdeRefactoring(start: Int, end: Int, file: ScalaSourceFile) 
     extends ScalaIdeRefactoring("Rename", file, start, end) with FullProjectIndex {
       
-    val project = file.project
+    val project = file.scalaProject
     
     var name = ""
       
@@ -65,7 +65,14 @@ class GlobalRenameAction extends RefactoringAction {
       val status = super.checkInitialConditions(pm)
 
       if(!status.hasError) {
-        name = preparationResult.right.get.selectedTree.symbol.nameString
+        
+        val selectedSymbol = preparationResult.right.get.selectedTree.symbol // only reachable if it's a Right value
+        
+        name = selectedSymbol match {
+          case sym if sym.isSetter => sym.getter(sym.owner).nameString
+          case sym => sym.nameString
+        } 
+        
         val (index, cleanupHandler) = buildFullProjectIndex(pm, name :: Nil)
         
         refactoring.index = index

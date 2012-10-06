@@ -36,7 +36,7 @@ Set the highlighting for implicit conversions and implicit parameters.
   }
 
   override def createFieldEditors() {
-    addField(new BooleanFieldEditor(P_ACTIVE, "Active", getFieldEditorParent))
+    addField(new BooleanFieldEditor(P_ACTIVE, "Enabled", getFieldEditorParent))
     addField(new BooleanFieldEditor(P_BOLD, "Bold", getFieldEditorParent))
     addField(new BooleanFieldEditor(P_ITALIC, "Italic", getFieldEditorParent))
     addField(new BooleanFieldEditor(P_CONVERSIONS_ONLY, "Only highlight implicit conversions", getFieldEditorParent))
@@ -66,6 +66,6 @@ class ImplicitsPagePreferenceInitializer extends AbstractPreferenceInitializer {
     store.setDefault(P_BOLD, false)
     store.setDefault(P_ITALIC, false)
     store.setDefault(P_CONVERSIONS_ONLY, true)
-    store.setDefault(P_FIRST_LINE_ONLY, false)
+    store.setDefault(P_FIRST_LINE_ONLY, true)
   }
 }

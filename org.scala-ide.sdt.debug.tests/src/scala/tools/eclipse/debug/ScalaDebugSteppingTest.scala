@@ -23,7 +23,6 @@ class ScalaDebugSteppingTest {
   @Before
   def initializeTests() {
     if (!initialized) {
-      ScalaDebugPlugin.plugin.getPreferenceStore.setValue(DebugPreferencePage.P_ENABLE, true)
       project.underlying.build(IncrementalProjectBuilder.CLEAN_BUILD, new NullProgressMonitor)
       project.underlying.build(IncrementalProjectBuilder.INCREMENTAL_BUILD, new NullProgressMonitor)
       initialized = true
@@ -430,7 +429,6 @@ class ScalaDebugSteppingTest {
   }
 
   // stepping out of anonymous functions
-
   @Test
   def StepReturnForComprehensionListStringInObjectMain() {
 
@@ -443,6 +441,34 @@ class ScalaDebugSteppingTest {
     session.stepReturn()
 
     session.checkStackFrame(TYPENAME_FC_LS + "$", "main([Ljava/lang/String;)V", 13)
+  }
+    
+  // Check that the jdi request created for a step over action are
+  // correctly cleaned when the step is interrupted by a breakpoint.
+  // Otherwise the whole system can hang.
+  @Test(timeout=10000)
+  def StepOverWithBreakpoint_1001201() {
+    session = initDebugSession("AnonFunOnListInt")
+    
+    session.runToLine(TYPENAME_AF_LI + "$",  20)
+    
+    session.checkStackFrame(TYPENAME_AF_LI + "$$anonfun$main$5", "apply$mcVI$sp(I)V", 20)
+    
+    val breakpoint= session.addLineBreakpoint(TYPENAME_AF_LI + "$",  19)
+    
+    session.stepOver()
+    
+    session.checkStackFrame(TYPENAME_AF_LI + "$$anonfun$main$5", "apply(I)V", 19)
+    
+    session.stepOver()
+    
+    session.checkStackFrame(TYPENAME_AF_LI + "$$anonfun$main$5", "apply$mcVI$sp(I)V", 20)
+    
+    session.stepOver()
+    
+    session.checkStackFrame(TYPENAME_AF_LI + "$$anonfun$main$5", "apply(I)V", 19)
+    
+    session.removeBreakpoint(breakpoint)
   }
 
 }

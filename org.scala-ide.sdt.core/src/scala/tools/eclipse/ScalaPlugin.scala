@@ -24,7 +24,7 @@ import org.eclipse.ui.plugin.AbstractUIPlugin
 import util.SWTUtils.asyncExec
 import org.osgi.framework.BundleContext
 import scala.tools.eclipse.javaelements.{ ScalaElement, ScalaSourceFile }
-import scala.tools.eclipse.util.OSGiUtils.pathInBundle
+import scala.tools.eclipse.util.OSGiUtils._
 import scala.tools.eclipse.templates.ScalaTemplateManager
 import org.eclipse.jdt.ui.PreferenceConstants
 import org.eclipse.core.resources.IResourceDelta
@@ -70,7 +70,7 @@ object ScalaPlugin {
   }
 }
 
-class ScalaPlugin extends AbstractUIPlugin with PluginLogConfigurator with IResourceChangeListener with IElementChangedListener with PartAdapter with HasLogger {
+class ScalaPlugin extends AbstractUIPlugin with PluginLogConfigurator with IResourceChangeListener with IElementChangedListener with HasLogger {
   def pluginId = "org.scala-ide.sdt.core"
   def compilerPluginId = "org.scala-ide.scala.compiler"
   def libraryPluginId = "org.scala-ide.scala.library"
@@ -151,7 +151,7 @@ class ScalaPlugin extends AbstractUIPlugin with PluginLogConfigurator with IReso
     Trim(continuationsClasses map { _.removeLastSegments(1).toOSString })
   
   lazy val sbtCompilerBundle = Platform.getBundle(sbtPluginId)
-  lazy val sbtCompilerInterface = pathInBundle(sbtCompilerBundle, "/lib/scala-" + shortScalaVer + "/lib/compiler-interface.jar")
+  lazy val sbtCompilerInterface = allPathsInBundle(sbtCompilerBundle, "/lib", "compiler-interface*.jar").toIterable.headOption
   // Disable for now, until we introduce a way to have multiple scala libraries, compilers available for the builder
   //lazy val sbtScalaLib = pathInBundle(sbtCompilerBundle, "/lib/scala-" + shortScalaVer + "/lib/scala-library.jar")
   //lazy val sbtScalaCompiler = pathInBundle(sbtCompilerBundle, "/lib/scala-" + shortScalaVer + "/lib/scala-compiler.jar")
@@ -190,7 +190,6 @@ class ScalaPlugin extends AbstractUIPlugin with PluginLogConfigurator with IReso
 
     if (!headlessMode) {
       PlatformUI.getWorkbench.getEditorRegistry.setDefaultEditor("*.scala", editorId)
-      ScalaPlugin.getWorkbenchWindow map (_.getPartService().addPartListener(ScalaPlugin.this))
       diagnostic.StartupDiagnostics.run
     }
     ResourcesPlugin.getWorkspace.addResourceChangeListener(this, IResourceChangeEvent.PRE_CLOSE)
@@ -254,16 +253,19 @@ class ScalaPlugin extends AbstractUIPlugin with PluginLogConfigurator with IReso
   override def resourceChanged(event: IResourceChangeEvent) {
     (event.getResource, event.getType) match {
       case (project: IProject, IResourceChangeEvent.PRE_CLOSE) =>
-        projects.synchronized {
-          projects.get(project) match {
-            case Some(scalaProject) =>
-              projects.remove(project)
-              logger.info("shutting down compilers for " + project.getName)
-              scalaProject.shutDownCompilers()
-            case None =>
-          }
-        }
+        disposeProject(project)
       case _ =>
+    }
+  }
+  
+  private def disposeProject(project: IProject): Unit = {
+    projects.synchronized {
+      projects.get(project) match {
+        case Some(scalaProject) =>
+          projects.remove(project)
+          scalaProject.dispose()
+        case None =>
+      }
     }
   }
   
@@ -307,7 +309,11 @@ class ScalaPlugin extends AbstractUIPlugin with PluginLogConfigurator with IReso
       
       val processChildren: Boolean = elem.getElementType match {
         case JAVA_MODEL => true
-        case JAVA_PROJECT if !isRemoved && !hasFlag(F_CLOSED) => true
+        case JAVA_PROJECT if isRemoved => 
+          disposeProject(elem.getJavaProject.getProject)
+          false
+
+        case JAVA_PROJECT if !hasFlag(F_CLOSED) => true
 
         case PACKAGE_FRAGMENT_ROOT =>
           if (isRemoved || hasFlag(F_REMOVED_FROM_CLASSPATH | F_ADDED_TO_CLASSPATH | F_ARCHIVE_CONTENT_CHANGED)) {
@@ -395,38 +401,4 @@ class ScalaPlugin extends AbstractUIPlugin with PluginLogConfigurator with IReso
    */
   def isBuildable(fileName: String): Boolean = 
     (fileName.endsWith(scalaFileExtn) || fileName.endsWith(javaFileExtn))
-
-  
-  override def partOpened(part: IWorkbenchPart) {
-    logger.debug("open " + part.getTitle)
-    doWithCompilerAndFile(part) { (compiler, ssf) =>
-      ssf.forceReload()
-    }
-  }
-
-  override def partClosed(part: IWorkbenchPart) {
-    logger.debug("close " + part.getTitle)
-    doWithCompilerAndFile(part) { (compiler, ssf) =>
-      ssf.discard()
-    }
-  }
-
-  private def doWithCompilerAndFile(part: IWorkbenchPart)(op: (ScalaPresentationCompiler, ScalaSourceFile) => Unit) {
-    part match {
-      case editor: IEditorPart =>
-        editor.getEditorInput match {
-          case fei: FileEditorInput =>
-            val f = fei.getFile
-            if (f.getName.endsWith(scalaFileExtn)) {
-              for (ssf <- ScalaSourceFile.createFromPath(f.getFullPath.toString)) {
-                val proj = getScalaProject(f.getProject)
-                if (proj.underlying.isOpen)
-                  proj.doWithPresentationCompiler(op(_, ssf)) // so that an exception is not thrown
-              }
-            }
-          case _ =>
-        }
-      case _ =>
-    }
-  }
 }

@@ -20,6 +20,7 @@
     <module>../org.scala-ide.sdt.aspects</module>
     <module>../org.scala-ide.sdt.core</module>
     <module>../org.scala-ide.sdt.core.tests</module>
+    <module>../org.scala-ide.sdt.spy</module>
     <module>../org.scala-ide.sdt.debug</module>
     <module>../org.scala-ide.sdt.debug.tests</module>
     <module>../org.scala-ide.sdt.weaving.feature</module>
@@ -60,6 +61,12 @@
       <name>Scalariform Scala p2 repository</name>
       <layout>p2</layout>
       <url>${repo.scalariform}</url>
+    </repository>
+    <repository>
+      <id>equinox.launcher</id>
+      <name>Equinox weaving launcher p2 repository</name>
+      <layout>p2</layout>
+      <url>${repo.equinox.launcher}</url>
     </repository>
   </repositories>
 
@@ -204,7 +211,7 @@
               <frameworkExtension>
                 <groupId>p2.osgi.bundle</groupId>
                 <artifactId>org.eclipse.equinox.weaving.hook</artifactId>
-                <version>1.0.200.I20120427-0800</version>
+                <version>${weaving.hook.plugin.version}</version>
               </frameworkExtension>
             </frameworkExtensions>
             <bundleStartLevel>

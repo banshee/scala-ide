@@ -2,6 +2,7 @@
 <?eclipse version="3.2"?>
 <plugin>
    <extension-point id="reconciliationParticipants" name="Reconcilation Participants" schema="schema/reconciliationParticipants.exsd"/>
+   <extension-point id="sourcefileprovider" name="Source file Providers" schema="schema/sourceFileProviders.exsd"/>
    <extension
          point="org.eclipse.ui.propertyPages">
       <page
@@ -428,7 +429,7 @@
      <specification
           annotationType="scala.tools.eclipse.semantichighlighting.implicits.implicitConversionsOrArgsAnnotation"
           colorPreferenceKey="scala.tools.eclipse.ui.preferences.implicit.color"
-          colorPreferenceValue="51,102,0"
+          colorPreferenceValue="153,153,153"
           contributesToHeader="false"
           includeOnPreferencePage="true"
           icon="icons/full/elcl16/implicit_co.gif"
@@ -776,13 +777,6 @@
            namespace="scala.tools.eclipse.launching"
            properties="hasMain,canLaunchAsJUnit"
            type="org.eclipse.core.runtime.IAdaptable"/>            
-      <propertyTester
-            properties="canLaunchAsJUnit"
-            namespace="scala.tools.eclipse.launching.junit"
-            type="org.eclipse.core.runtime.IAdaptable"
-            class="scala.tools.eclipse.launching.JUnitPropertyTester"
-            id="scala.tools.eclipse.launching.JUnitPropertyTester">
-      </propertyTester>
   </extension>
 
   <extension point="org.eclipse.debug.ui.launchShortcuts">
@@ -876,6 +870,13 @@
       commandId="org.eclipse.shortcut.scala.debug"
       schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"
       sequence="M2+M3+D S" />
+  </extension>
+
+  <extension point="org.scala-ide.sdt.core.sourcefileprovider">
+    <provider
+      class="scala.tools.eclipse.javaelements.ScalaSourceFileProvider"
+      file_extension="scala">
+    </provider>
   </extension>
 
   <extension point="org.scala-ide.sdt.aspects.cuprovider">
@@ -1232,7 +1233,7 @@
          commandId="scala.tools.eclipse.editor.ShowTypeOfSelection"
          contextId="scala.tools.eclipse.scalaEditorScope"
          schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"
-         sequence="M2+M1+S T">
+         sequence="M2+M1+W T">
    </key>
    <key
          commandId="scala.tools.eclipse.editor.OpenImplicit"
@@ -1463,4 +1464,51 @@
        </enablement>
     </moveParticipant>
  </extension>
+ <extension
+       id="org.scala-ide.sdt.product"
+       point="org.eclipse.core.runtime.products">
+    <product
+          application="org.eclipse.ui.ide.workbench"
+          description="Scala IDE for Eclipse"
+          name="Scala IDE">
+       <property name="aboutImage" value="product.png"/>
+       <property name="aboutText" value="%productBlurb"/>
+       <property
+             name="preferenceCustomization"
+             value="plugin_customization.ini">
+       </property>
+       <property
+             name="introTitle"
+             value="%productIntroTitle"/>
+       <property
+             name="introBrandingImage"
+             value="product:intro-scala.png"/>
+       <property
+             name="startupForegroundColor"
+             value="C8D5EA"/>
+       <property
+             name="startupMessageRect"
+             value="7,220,441,20"/>
+       <property
+             name="startupProgressRect"
+             value="0,280,455,15"/> 
+       <property
+             name="buildIdLocation"
+             value="312,190">
+       </property>
+    </product>
+ </extension>
+ <extension point="org.eclipse.ui.intro">
+    <introProductBinding
+          introId="org.eclipse.ui.intro.universal"
+          productId="org.scala-ide.sdt.product">
+    </introProductBinding>
+ </extension>
+ <extension
+       point="org.eclipse.core.runtime.preferences">
+    <initializer
+          class="scala.tools.eclipse.PreferenceInitializer">
+    </initializer>
+ </extension>
+ 
 </plugin>

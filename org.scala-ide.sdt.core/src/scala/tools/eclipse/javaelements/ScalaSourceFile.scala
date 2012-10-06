@@ -21,6 +21,15 @@ import org.eclipse.jdt.core.compiler.CharOperation
 import scala.tools.nsc.interactive.Response
 import scala.tools.eclipse.reconciliation.ReconciliationParticipantsExtensionPoint
 import org.eclipse.jdt.core.JavaModelException
+import scala.tools.eclipse.InteractiveCompilationUnit
+import scala.tools.eclipse.sourcefileprovider.SourceFileProvider
+import org.eclipse.core.runtime.IPath
+
+
+class ScalaSourceFileProvider extends SourceFileProvider {
+  override def createFrom(path: IPath): Option[InteractiveCompilationUnit] = 
+    ScalaSourceFile.createFromPath(path.toString)
+}
 
 object ScalaSourceFile {
   val handleFactory = new HandleFactory
@@ -28,11 +37,13 @@ object ScalaSourceFile {
   def createFromPath(path : String) : Option[ScalaSourceFile] = {
     if (!path.endsWith(".scala"))
       None
-    else
-      handleFactory.createOpenable(path, null) match {
+    else {
+      val openable = handleFactory.createOpenable(path, null) 
+      openable match {
         case ssf : ScalaSourceFile => Some(ssf)
         case _ => None
       }
+    }
   }
 }
 
@@ -47,7 +58,7 @@ class ScalaSourceFile(fragment : PackageFragment, elementName: String, workingCo
    */
   override def scheduleReconcile(): Response[Unit] = {
     // askReload first
-    val res = project.withSourceFile(this) { (sf, compiler) =>
+    val res = scalaProject.withSourceFile(this) { (sf, compiler) =>
       compiler.askReload(this, getContents)
     } ()
     
@@ -59,6 +70,9 @@ class ScalaSourceFile(fragment : PackageFragment, elementName: String, workingCo
     
     res
   }
+
+  override def reconcile(newContents: String): List[IProblem] =
+    getProblems.toList
 
   override def reconcile(
       astLevel : Int,
@@ -85,8 +99,6 @@ class ScalaSourceFile(fragment : PackageFragment, elementName: String, workingCo
   override def codeSelect(offset : Int, length : Int, workingCopyOwner : WorkingCopyOwner) : Array[IJavaElement] =
     codeSelect(this, offset, length, workingCopyOwner)
 
-  override def getProblemRequestor = getPerWorkingCopyInfo
-
   override lazy val file : AbstractFile = { 
     val res = try { getCorrespondingResource } catch { case _: JavaModelException => null }
     res match {
@@ -95,10 +107,15 @@ class ScalaSourceFile(fragment : PackageFragment, elementName: String, workingCo
     }
   }
 
-  def getProblems : Array[IProblem] = withSourceFile { (src, compiler) =>
-    val problems = compiler.problemsOf(this)
-    if (problems.isEmpty) null else problems.toArray
-  } (null)
+  /** Implementing the weaving interface requires to return `null` for an empty array. */
+  override def getProblems: Array[IProblem] = {
+    val probs = currentProblems()
+    if (probs.isEmpty) null else probs.toArray
+  }
+
+  override def currentProblems(): List[IProblem] = withSourceFile { (src, compiler) =>
+    compiler.problemsOf(this)
+  } (List())
   
   override def getType(name : String) : IType = new LazyToplevelClass(this, name)
   
@@ -111,16 +128,16 @@ class ScalaSourceFile(fragment : PackageFragment, elementName: String, workingCo
   }
 
   /** Makes sure {{{this}}} source is not in the ignore buffer of the compiler and ask the compiler to reload it. */
-  final def forceReload(): Unit = project.doWithPresentationCompiler { compiler =>
+  final def forceReload(): Unit = scalaProject.doWithPresentationCompiler { compiler =>
     compiler.askToDoFirst(this)
     reload()
   }
   
   /** Ask the compiler to reload {{{this}}} source. */
-  final def reload(): Unit = project.doWithPresentationCompiler { _.askReload(this, getContents) }
+  final def reload(): Unit = scalaProject.doWithPresentationCompiler { _.askReload(this, getContents) }
 
   /** Ask the compiler to discard {{{this}}} source. */
-  final def discard(): Unit = project.doWithPresentationCompiler { compiler =>
+  final def discard(): Unit = scalaProject.doWithPresentationCompiler { compiler =>
     compiler.discardSourceFile(this)
   }
 }

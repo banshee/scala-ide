@@ -28,54 +28,66 @@ class TypeTest extends AbstractSymbolClassifierTest {
   }
 
   @Test
-  @Ignore("Fails with 2.10. Need to investigate.")
-  def set_is_a_type() {
+  def path_dependent_type() {
     checkSymbolClassification("""
-      case class Bob(s: Set[Int])
-      object X {
-        val Bob(s) = Bob(Set())
+      trait MTrait { trait KTrait[A] }
+      trait X {
+        def xs(m: MTrait)(k: m.KTrait[Int])
       }
       """, """
-      case class Bob(s: $T$[$C$])
-      object X {
-        val Bob(s) = Bob($V$())
+      trait MTrait { trait KTrait[A] }
+      trait X {
+        def xs(m: $TT  $)(k: m.$TT  $[$C$])
       }
       """,
-      Map("T" -> Type, "V" -> TemplateVal, "C" -> Class))
-  }
-  
-  @Test
-  @Ignore
-  def classify_existential_type_1() {
-    checkSymbolClassification(
-    """
-      object O {
-        def m(x : t forSome {type t <: AnyRef}) = x
-      }
-    """", 
-    """
-      object O {
-        def m(x : t forSome {type t <: $ TPE$ }) = x
-      }
-    """", 
-    Map("TPE" -> Type))
-  }
-  
-  @Test
-  @Ignore
-  def classify_existential_type_2() {
-    checkSymbolClassification(
-    """
-      object O {
-        def m(x : t forSome {type t <: List [_]}) = x
-      }
-    """", 
-    """
-      object O {
-        def m(x : t forSome {type t <: $TPE$[_]}) = x
-      }
-    """", 
-    Map("TPE" -> Type))
+      Map("C" -> Class, "TT" -> Trait))
   }
 
+  @Test
+  def type_projection() {
+    checkSymbolClassification("""
+      trait MTrait { trait KTrait[A] }
+      trait X {
+        def xs(m: MTrait#KTrait[Int])
+      }
+      """, """
+      trait MTrait { trait KTrait[A] }
+      trait X {
+        def xs(m: $TT  $#$TT  $[$C$])
+      }
+      """,
+      Map("C" -> Class, "TT" -> Trait))
+  }
+
+  @Test
+  @Ignore("Enable when ticket #1001239 is fixed")
+  def deep_type_projection() {
+    checkSymbolClassification("""
+      trait MTrait { trait KTrait[A] { trait HTrait } }
+      trait X {
+        def xs(m: MTrait#KTrait[Int]#HTrait)
+      }
+      """, """
+      trait MTrait { trait KTrait[A] { trait HTrait } }
+      trait X {
+        def xs(m: $TT  $#$TT  $[$C$]#$TT  $)
+      }
+      """,
+      Map("C" -> Class, "TT" -> Trait))
+  }
+
+  @Test
+  @Ignore("Enable when ticket #1001046 is fixed")
+  def classify_type_in_abstract_val() {
+    checkSymbolClassification("""
+      trait X {
+        val s: String
+      }
+      """, """
+      trait X {
+        val s: $TPE $
+      }
+      """,
+      Map("TPE" -> Type))
+  }
 }

@@ -11,7 +11,7 @@ import org.eclipse.core.resources.IFile
 import org.eclipse.jdt.core.{ IAnnotation, ICompilationUnit, IJavaElement, IMemberValuePair, Signature }
 import org.eclipse.jdt.core.compiler.CharOperation
 import org.eclipse.jdt.internal.core.{
-  Annotation, AnnotationInfo => JDTAnnotationInfo, AnnotatableInfo, CompilationUnit => JDTCompilationUnit, ImportContainer,
+  Annotation => JDTAnnotation, AnnotationInfo => JDTAnnotationInfo, AnnotatableInfo, CompilationUnit => JDTCompilationUnit, ImportContainer,
   ImportContainerInfo, ImportDeclaration, ImportDeclarationElementInfo, JavaElement, JavaElementInfo,
   MemberValuePair, OpenableElementInfo, SourceRefElement, TypeParameter, TypeParameterElementInfo}
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileConstants
@@ -404,7 +404,8 @@ trait ScalaStructureBuilder extends ScalaAnnotationHelper { pc : ScalaPresentati
         val parentTree = c.impl.parents.head
         val isAnon = sym.isAnonymousClass
         val superClass = sym.superClass
-        val superName = if (superClass ne NoSymbol) superClass.toString else "Object"
+        val superName = mapType(superClass)
+
         val classElem =
           if(sym hasFlag Flags.TRAIT)
             new ScalaTraitElement(element, name)
@@ -449,11 +450,8 @@ trait ScalaStructureBuilder extends ScalaAnnotationHelper { pc : ScalaPresentati
         
         val annotsPos = addAnnotations(sym, classElemInfo, classElem)
 
-        classElemInfo.setSuperclassName(mapType(superClass).toCharArray)
-        
-        val interfaceNames = sym.mixinClasses.map { m => 
-          mapType(m).toCharArray
-        }
+        classElemInfo.setSuperclassName(superName.toCharArray)
+        val interfaceNames = sym.mixinClasses.map(mapType(_).toCharArray)
         classElemInfo.setSuperInterfaceNames(interfaceNames.toArray)
         
         val (start, end) = if (!isAnon) {
@@ -565,10 +563,10 @@ trait ScalaStructureBuilder extends ScalaAnnotationHelper { pc : ScalaPresentati
       override def addVal(v : ValDef) : Owner = {
         val elemName = nme.getterName(v.name)
         val sym = v.symbol
-        val display = elemName.toString+" : "+sym.tpe.toString
-        
+        val display = elemName.toString+" : "+sym.info.resultType.toString
+
         val valElem =
-          if(sym.hasFlag(Flags.MUTABLE))
+          if(sym.isMutable && !sym.isLazy)
             new ScalaVarElement(element, elemName.toString, display)
           else
             new ScalaValElement(element, elemName.toString, display)
@@ -788,7 +786,7 @@ trait ScalaStructureBuilder extends ScalaAnnotationHelper { pc : ScalaPresentati
           pos
         else {
           var name = annot.atp.typeSymbol.nameString
-          val handle = new Annotation(parentHandle, name)
+          val handle = new JDTAnnotation(parentHandle, name)
           
           val info = buildInfoForJavaAnnotation(annot, handle)
           
@@ -813,7 +811,7 @@ trait ScalaStructureBuilder extends ScalaAnnotationHelper { pc : ScalaPresentati
       }}
       }
     
-      private def buildInfoForJavaAnnotation(ann: AnnotationInfo, handle: Annotation): JDTAnnotationInfo = {
+      private def buildInfoForJavaAnnotation(ann: AnnotationInfo, handle: JDTAnnotation): JDTAnnotationInfo = {
         assert(ann.atp.typeSymbolDirect.isJavaDefined, "You are passing a Scala annotation. Scala annotations cannot be exposed to JDT and they should be filtered out")
       
         def getMemberValuePairs(owner : JavaElement, memberValuePairs : List[(Name, ClassfileAnnotArg)]) : Array[IMemberValuePair] = {
@@ -859,7 +857,7 @@ trait ScalaStructureBuilder extends ScalaAnnotationHelper { pc : ScalaPresentati
         val info = new JDTAnnotationInfo          
         info.nameStart = ann.pos.startOrPoint
         info.nameEnd = ann.pos.endOrPoint-1
-        info.members = if(ann.assocs.isEmpty) Annotation.NO_MEMBER_VALUE_PAIRS else getMemberValuePairs(handle, ann.assocs)
+        info.members = if(ann.assocs.isEmpty) JDTAnnotation.NO_MEMBER_VALUE_PAIRS else getMemberValuePairs(handle, ann.assocs)
         info
      }
   
@@ -918,9 +916,7 @@ trait ScalaStructureBuilder extends ScalaAnnotationHelper { pc : ScalaPresentati
           }
 
           tree match {
-            case dt : DefTree if dt.symbol.isSynthetic ||
-              // Accessors are added in ValOwner, when they are not, remove. 
-              dt.symbol.hasFlag(Flags.ACCESSOR) => (builder, Nil)
+            case dt : DefTree if dt.symbol.isSynthetic => (builder, Nil)
             case pd : PackageDef => (builder.addPackage(pd), pd.stats)
             case i : Import => (builder.addImport(i), Nil)
             case cd : ClassDef =>
