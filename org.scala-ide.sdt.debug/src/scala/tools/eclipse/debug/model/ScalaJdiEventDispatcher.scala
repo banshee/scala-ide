@@ -44,8 +44,8 @@ class ScalaJdiEventDispatcher private (virtualMachine: VirtualMachine, eventActo
         case e: VMDisconnectedException =>
           // it is likely that we will see this exception before being able to
           // shutdown the loop after a VMDisconnectedEvent
-          dispose
-        case e: Throwable =>
+          dispose()
+        case e: Exception =>
           // it should not die from any exception. Just logging
           logger.error("Error in jdi event loop", e)
       }
@@ -62,6 +62,8 @@ class ScalaJdiEventDispatcher private (virtualMachine: VirtualMachine, eventActo
 
   /**
    * Register the actor as recipient of the call back for the given request
+   * TODO: I think we should try to use JDI's mechanisms to associate the actor to the request:
+   *       @see EventRequest.setProperty(k, v) and EventRequest.getProperty
    */
   def setActorFor(actor: Actor, request: EventRequest) {
     eventActor ! ScalaJdiEventDispatcherActor.SetActorFor(actor, request)
@@ -134,6 +136,9 @@ private class ScalaJdiEventDispatcherActor private (scalaDebugTargetActor: Actor
       case event: VMDeathEvent =>
         futures ::= (scalaDebugTargetActor !! event)
       case event =>
+ //       println("GOT event: " + event)
+        /* TODO: I think we should try to use JDI's mechanisms to associate the actor to the request:
+         *  @see EventRequest.setProperty(k, v) and EventRequest.getProperty */
         eventActorMap.get(event.request).foreach { interestedActor =>
           futures ::= (interestedActor !! event)
         }

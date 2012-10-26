@@ -65,53 +65,50 @@ abstract class ScalaDebugTarget private (val virtualMachine: VirtualMachine, lau
 
   // Members declared in org.eclipse.debug.core.IBreakpointListener
 
-  def breakpointAdded(breakponit: IBreakpoint): Unit = ???
-  def breakpointChanged(breakpoint: IBreakpoint, delta: IMarkerDelta): Unit = ???
-  def breakpointRemoved(breakpoint: IBreakpoint, delta: IMarkerDelta): Unit = ???
+  override def breakpointAdded(breakponit: IBreakpoint): Unit = ???
+  override def breakpointChanged(breakpoint: IBreakpoint, delta: IMarkerDelta): Unit = ???
+  override def breakpointRemoved(breakpoint: IBreakpoint, delta: IMarkerDelta): Unit = ???
 
   // Members declared in org.eclipse.debug.core.model.IDebugElement
 
-  override def getDebugTarget(): org.eclipse.debug.core.model.IDebugTarget = debugTarget
-  override def getLaunch(): org.eclipse.debug.core.ILaunch = launch
+  override def getLaunch: org.eclipse.debug.core.ILaunch = launch
 
   // Members declared in org.eclipse.debug.core.model.IDebugTarget
 
-  def getName(): String = "Scala Debug Target" // TODO: need better name
-  def getProcess(): org.eclipse.debug.core.model.IProcess = process
-  def getThreads(): Array[org.eclipse.debug.core.model.IThread] = internalGetThreads.toArray
-  def hasThreads(): Boolean = !internalGetThreads.isEmpty
-  def supportsBreakpoint(breakpoint: IBreakpoint): Boolean = ???
+  override def getName: String = "Scala Debug Target" // TODO: need better name
+  override def getProcess: org.eclipse.debug.core.model.IProcess = process
+  override def getThreads: Array[org.eclipse.debug.core.model.IThread] = internalGetThreads.toArray
+  override def hasThreads: Boolean = !internalGetThreads.isEmpty
+  override def supportsBreakpoint(breakpoint: IBreakpoint): Boolean = ???
 
   // Members declared in org.eclipse.debug.core.model.IDisconnect
 
-  def canDisconnect(): Boolean = false // TODO: need real logic
-  def disconnect(): Unit = ???
-  def isDisconnected(): Boolean = false // TODO: need real logic
+  override def canDisconnect: Boolean = false // TODO: need real logic
+  override def disconnect(): Unit = ???
+  override def isDisconnected: Boolean = false // TODO: need real logic
 
   // Members declared in org.eclipse.debug.core.model.IMemoryBlockRetrieval
 
-  def getMemoryBlock(startAddress: Long, length: Long): org.eclipse.debug.core.model.IMemoryBlock = ???
-  def supportsStorageRetrieval(): Boolean = ???
+  override def getMemoryBlock(startAddress: Long, length: Long): org.eclipse.debug.core.model.IMemoryBlock = ???
+  override def supportsStorageRetrieval: Boolean = ???
 
   // Members declared in org.eclipse.debug.core.model.ISuspendResume
 
-  def canResume(): Boolean = false // TODO: need real logic
-  def canSuspend(): Boolean = false // TODO: need real logic
-  def isSuspended(): Boolean = false // TODO: need real logic
-  def resume(): Unit = ???
-  def suspend(): Unit = ???
+  override def canResume: Boolean = false // TODO: need real logic
+  override def canSuspend: Boolean = false // TODO: need real logic
+  override def isSuspended: Boolean = false // TODO: need real logic
+  override def resume(): Unit = ???
+  override def suspend(): Unit = ???
 
   // Members declared in org.eclipse.debug.core.model.ITerminate
 
-  override def canTerminate(): Boolean = running // TODO: need real logic
-  override def isTerminated(): Boolean = !running // TODO: need real logic
-  override def terminate(): Unit = {
-    virtualMachine.dispose()
-  }
+  override def canTerminate: Boolean = running // TODO: need real logic
+  override def isTerminated: Boolean = !running // TODO: need real logic
+  override def terminate(): Unit = virtualMachine.dispose()
   
   // Members declared in scala.tools.eclipse.debug.model.ScalaDebugElement
-  
-  override val debugTarget= this
+
+  override def getDebugTarget: ScalaDebugTarget = this
 
   // ---
 
@@ -172,70 +169,6 @@ abstract class ScalaDebugTarget private (val virtualMachine: VirtualMachine, lau
       Nil
     }
   }
-
-  /**
-   * Return the method containing the actual code of the anon func, if it is contained
-   * in the given range, <code>None</code> otherwise.
-   */
-  def anonFunctionsInRange(refType: ReferenceType, range: Range): Option[Method] = {
-    findAnonFunction(refType).filter(method => range.contains(method.location.lineNumber))
-  }
-
-  /**
-   * Return the method containing the actual code of the anon func.
-   * Return <code>None</code> if no method can be identified has being it.
-   */
-  def findAnonFunction(refType: ReferenceType): Option[Method] = {
-    // TODO: check super type at some point
-    import scala.collection.JavaConverters._
-    val methods = refType.methods.asScala.filter(method => !method.isBridge && method.name.startsWith("apply"))
-
-    methods.size match {
-      case 1 =>
-        // one non bridge apply method, just use it
-        methods.headOption
-      case 2 =>
-        // this is more complex.
-        // the compiler may have 'forgotten' to flag the 'apply' as a bridge method,
-        // or both the 'apply' and the 'apply$__$sp' contains the actual code
-
-        // if the 'apply' and the 'apply$__$sp' contains the same code, we are in the optimization case, the 'apply' method
-        // will be used, otherwise, the 'apply$__$sp" will be used.
-        val applyMethod = methods.find(_.name == "apply")
-        val applySpMethod = methods.find(_.name.startsWith("apply$"))
-        (applyMethod, applySpMethod) match {
-          case (Some(m1), Some(m2)) if sameBytecode(m1, m2) => applyMethod
-          case (Some(_), Some(_))                           => applySpMethod
-          case (Some(_), None)                              => applyMethod
-          case (None, _)                                    => applySpMethod
-        }
-      case _ =>
-        // doesn't contain apply methods, so it is not an anonFunction
-        None
-    }
-  }
-
-  private def sameBytecode(m1: Method, m2: Method): Boolean = m1.bytecodes.sameElements(m2.bytecodes)
-
-  /**
-   * Return true if it is not a filtered location
-   */
-  def isValidLocation(location: Location): Boolean = {
-    val typeName = location.declaringType.name
-    // TODO: use better pattern matching
-    // TODO: check for bridge methods?
-    if (typeName.startsWith("scala.collection") || typeName.startsWith("scala.runtime") || typeName.equals("java.lang.ClassLoader"))
-      false
-    else if (typeName.contains("$$anonfun$")) {
-      findAnonFunction(location.declaringType).exists(_ == location.method)
-    } else
-      true
-  }
-
-  def shouldNotStepInto(location: Location): Boolean = {
-    location.method.isConstructor || location.declaringType.name.equals("java.lang.ClassLoader")
-  }
-
 }
 
 private[model] object ScalaDebugTargetActor {
